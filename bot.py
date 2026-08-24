@@ -93,9 +93,11 @@ def _base_ydl_opts() -> dict:
     }
     if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
-        # Cookies bor bo'lsa web klient to'liq format ro'yxatini beradi va
-        # cookies bilan bot-tekshiruvidan ham o'tadi.
-        opts["extractor_args"] = {"youtube": {"player_client": ["web", "android"]}}
+        # "web" klient endi ko'p formatlarda PO token talab qiladi va ularni
+        # "mavjud emas" deb chiqarib tashlaydi. tv/web_creator ko'pincha shu
+        # talabsiz formatlar beradi - shuning uchun bir nechta klientni birga
+        # so'raymiz, yt-dlp ularning formatlarini birlashtirib beradi.
+        opts["extractor_args"] = {"youtube": {"player_client": ["tv", "web_creator", "android", "web"]}}
     else:
         # Cookies yo'q bo'lsa "Sign in to confirm you're not a bot" tekshiruvini
         # chetlab o'tish uchun android klientga ustunlik beramiz (formatlar cheklangan).
@@ -177,13 +179,17 @@ async def download_photo(url: str) -> str:
 
 def _friendly_download_error(e: Exception) -> str:
     text = str(e)
-    if "Sign in to confirm" in text or "cookies" in text.lower():
+    lower = text.lower()
+    if "rate-limit" in lower or "login required" in lower or "redirected to the login page" in lower:
         return (
-            "YouTube hozir botlarni cheklamoqda va cookies talab qilmoqda. "
-            "Administrator COOKIES_FILE sozlashi kerak."
+            "Bu havola login talab qiladi (platforma cheklovi, masalan Instagram). "
+            "Administrator shu platforma uchun COOKIES_CONTENT'ni yangilashi kerak."
         )
-    if "login required" in text.lower() or "rate-limit" in text.lower():
-        return "Bu havola login talab qiladi (platforma cheklovi). Boshqa havola bilan urinib ko'ring."
+    if "sign in to confirm" in lower or "requested format is not available" in lower:
+        return (
+            "YouTube hozir botlarni cheklamoqda / kerakli formatni bermayapti. "
+            "Administrator sozlamalarni tekshirishi kerak."
+        )
     return text
 
 
