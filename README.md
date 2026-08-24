@@ -5,9 +5,9 @@ orqali) asosida ishlaydi.
 
 ## Imkoniyatlari
 
-- Shaxsiy chatda musiqa nomini yozsangiz - YouTube'dan qidirib, MP3 qilib yuboradi.
-- Instagram / TikTok / Pinterest / YouTube havolasini tashlasangiz - "Video / Rasm / Musiqa"
-  tugmalari chiqadi, tanlaganingizni yuklab beradi.
+- Shaxsiy chatda musiqa nomini yozsangiz - SoundCloud'dan qidirib, MP3 qilib yuboradi.
+- Instagram / TikTok / Pinterest havolasini tashlasangiz - "Video / Rasm / Musiqa" tugmalari
+  chiqadi, tanlaganingizni yuklab beradi.
 - Har qanday video yuborsangiz - aylana video (video note, maksimal 60 soniya) qilib qaytaradi.
 - Musiqa fayl (MP3) yuborsangiz - yangi nom va ijrochini so'rab, ID3 teglarini o'zgartirib beradi.
 - Guruhda `.id` - reply qilingan foydalanuvchining ID'sini chiqaradi.
@@ -27,8 +27,7 @@ Muhit o'zgaruvchilari:
 - `BOT_TOKEN` - @BotFather'dan olingan bot tokeni (majburiy).
 - `PORT` - Render kabi platformalarda health-check uchun ochiladigan port (ixtiyoriy, standart 8080).
 - `COOKIES_FILE` - yt-dlp uchun cookies.txt fayl yo'li (ixtiyoriy, masalan Render'ning "Secret
-  File" xususiyati orqali qo'shilgan bo'lsa). Instagram ko'pincha login talab qiladi, YouTube esa
-  datacenter IP'lardan "Sign in to confirm you're not a bot" xatosini berishi mumkin - bunday
+  File" xususiyati orqali qo'shilgan bo'lsa). Instagram ko'pincha login talab qiladi - bunday
   hollarda brauzerdan eksport qilingan cookies.txt yordam beradi.
 - `COOKIES_CONTENT` - yuqoridagi bilan bir xil, lekin fayl yo'li o'rniga cookies.txt'ning butun
   matnini to'g'ridan-to'g'ri muhit o'zgaruvchisiga qo'yish uchun (Secret File kerak bo'lmaydi -
@@ -37,9 +36,10 @@ Muhit o'zgaruvchilari:
 
 ## Ma'lum cheklovlar
 
-Instagram va YouTube vaqti-vaqti bilan datacenter IP'lardan (Render kabi) kelgan so'rovlarni
-bloklaydi yoki login talab qiladi. YouTube uchun kod avtomatik `android` klient orqali chetlab
-o'tishga harakat qiladi, lekin bu har doim ishlayvermaydi. Instagram uchun odatda `COOKIES_FILE`
+YouTube 2025-2026 yillarda kiritilgan bot-aniqlash cheklovlari (PO token talabi) tufayli
+qo'llab-quvvatlanmaydi - shu sababli musiqa qidiruv SoundCloud orqali ishlaydi, YouTube havolalari
+esa "qo'llab-quvvatlanmaydi" deb chiqadi. Instagram vaqti-vaqti bilan datacenter IP'lardan
+(Render kabi) kelgan so'rovlarni bloklaydi yoki login talab qiladi - bunday hollarda `COOKIES_FILE`
 zarur bo'ladi. TikTok va Pinterest odatda muammosiz ishlaydi.
 
 ## Guruhda ishlashi uchun

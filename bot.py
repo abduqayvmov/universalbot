@@ -56,7 +56,6 @@ PLATFORM_PATTERNS = {
     "Instagram": re.compile(r"instagram\.com"),
     "TikTok": re.compile(r"tiktok\.com"),
     "Pinterest": re.compile(r"pinterest\.[a-z.]+|pin\.it"),
-    "YouTube": re.compile(r"youtube\.com|youtu\.be"),
 }
 
 pending_links: dict[str, str] = {}
@@ -93,15 +92,6 @@ def _base_ydl_opts() -> dict:
     }
     if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
-        # "web" klient endi ko'p formatlarda PO token talab qiladi va ularni
-        # "mavjud emas" deb chiqarib tashlaydi. tv/web_creator ko'pincha shu
-        # talabsiz formatlar beradi - shuning uchun bir nechta klientni birga
-        # so'raymiz, yt-dlp ularning formatlarini birlashtirib beradi.
-        opts["extractor_args"] = {"youtube": {"player_client": ["tv", "web_creator", "android", "web"]}}
-    else:
-        # Cookies yo'q bo'lsa "Sign in to confirm you're not a bot" tekshiruvini
-        # chetlab o'tish uchun android klientga ustunlik beramiz (formatlar cheklangan).
-        opts["extractor_args"] = {"youtube": {"player_client": ["android", "web"]}}
     return opts
 
 
@@ -134,7 +124,7 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
 
 async def search_music(query: str):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _ytdlp_extract, f"ytsearch1:{query}", True)
+    return await loop.run_in_executor(None, _ytdlp_extract, f"scsearch1:{query}", True)
 
 
 async def download_media(url: str, audio_only: bool):
@@ -186,10 +176,7 @@ def _friendly_download_error(e: Exception) -> str:
             "Administrator shu platforma uchun COOKIES_CONTENT'ni yangilashi kerak."
         )
     if "sign in to confirm" in lower or "requested format is not available" in lower:
-        return (
-            "YouTube hozir botlarni cheklamoqda / kerakli formatni bermayapti. "
-            "Administrator sozlamalarni tekshirishi kerak."
-        )
+        return "Manba hozir botlarni cheklamoqda / kerakli formatni bermayapti."
     return text
 
 
@@ -225,7 +212,7 @@ async def cmd_start(message: Message):
     await message.answer(
         "Salom! 👋\n\n"
         "🎵 Musiqa nomini yozing (shaxsiy chatda) - men uni topib beraman.\n"
-        "🔗 Instagram, TikTok, Pinterest yoki YouTube havolasini tashlang - "
+        "🔗 Instagram, TikTok yoki Pinterest havolasini tashlang - "
         "video, rasm yoki musiqa qilib beraman (tanlaysiz).\n"
         "🎥 Video yuboring - aylana video (video note) qilib qaytaraman.\n"
         "🎧 Musiqa fayl yuboring - nomi va ijrochisini o'zgartirib beraman.\n\n"
@@ -314,8 +301,8 @@ async def handle_link(message: Message, url: str):
     platform = detect_platform(url)
     if not platform:
         return await message.reply(
-            "Bu havola qo'llab-quvvatlanmaydi. Instagram, TikTok, Pinterest yoki "
-            "YouTube havolasini yuboring."
+            "Bu havola qo'llab-quvvatlanmaydi. Instagram, TikTok yoki Pinterest "
+            "havolasini yuboring."
         )
     token = uuid.uuid4().hex[:12]
     pending_links[token] = url
