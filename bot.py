@@ -90,12 +90,16 @@ def _base_ydl_opts() -> dict:
         "quiet": True,
         "no_warnings": True,
         "ffmpeg_location": FFMPEG_PATH,
-        # YouTube "Sign in to confirm you're not a bot" tekshiruvini chetlab
-        # o'tish uchun - datacenter IP'lardan web klient ko'pincha shu xatoni beradi.
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
     if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
+        # Cookies bor bo'lsa web klient to'liq format ro'yxatini beradi va
+        # cookies bilan bot-tekshiruvidan ham o'tadi.
+        opts["extractor_args"] = {"youtube": {"player_client": ["web", "android"]}}
+    else:
+        # Cookies yo'q bo'lsa "Sign in to confirm you're not a bot" tekshiruvini
+        # chetlab o'tish uchun android klientga ustunlik beramiz (formatlar cheklangan).
+        opts["extractor_args"] = {"youtube": {"player_client": ["android", "web"]}}
     return opts
 
 
