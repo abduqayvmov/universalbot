@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import uuid
 import logging
 import asyncio
@@ -22,6 +23,7 @@ from aiogram.types import (
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
 )
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1
@@ -57,15 +59,12 @@ PLATFORM_PATTERNS = {
     "TikTok": re.compile(r"tiktok\.com"),
     "Pinterest": re.compile(r"pinterest\.[a-z.]+|pin\.it"),
 }
-TIKTOK_PHOTO_RE = re.compile(r"(tiktok\.com/@[\w.\-]+/)photo(/\d+)")
-
-
-def _normalize_tiktok_url(url: str) -> str:
-    """TikTok slayd-shou (rasm) postlari /photo/ yo'lida bo'ladi, lekin yt-dlp
-    buni "Unsupported URL" deb rad etadi - faqat /video/ ni tanийdi. TikTok'ning
-    o'zi post ID orqali ishlaydi, yo'l segmentiga unchalik e'tibor bermaydi,
-    shuning uchun /video/ ga almashtirib yuboramiz."""
-    return TIKTOK_PHOTO_RE.sub(r"\1video\2", url)
+# TikTok slayd-shou (rasm+musiqa) postlari /photo/ yo'lida bo'ladi. yt-dlp'ning
+# TikTok extraktori bularni "Unsupported URL" deb butunlay rad etadi (URL'ni
+# /video/ ga almashtirib yuborish ham yordam bermaydi - u post turini
+# ID orqali aniqlab, baribir video sifatida ishlamasligini aytadi), shuning
+# uchun bunday postlarni sahifa HTML'idan o'zimiz o'qib olamiz.
+TIKTOK_PHOTO_RE = re.compile(r"tiktok\.com/@[\w.\-]+/photo/\d+")
 
 pending_links: dict[str, str] = {}
 pending_audio: dict[int, str] = {}
@@ -115,13 +114,10 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
         # "*" - filesize/bitrate kabi ba'zi metama'lumotlari to'liq bo'lmagan
         # formatlarni ham qabul qiladi, aks holda yt-dlp ularni "mos emas" deb
         # rad etib "Requested format is not available" xatosini beradi.
-        opts["format"] = "bestaudio*/best*"
-        opts["postprocessors"] = [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            # 128 kbps - Telegram'da eshitish uchun yetarli va tezroq kodlanadi.
-            "preferredquality": "128",
-        }]
+        # mp3 formatini ustunlik bilan tanlaymiz va uni qayta kodlamaymiz -
+        # SoundCloud odatda progressiv mp3 beradi, qayta encode qilish faqat
+        # vaqt yo'qotadi (Telegram mp3/m4a'ni to'g'ridan-to'g'ri qabul qiladi).
+        opts["format"] = "bestaudio[ext=mp3]/bestaudio*/best*"
     else:
         # Video va audio alohida oqim sifatida berilgan hollarda (masalan
         # Pinterest) ularni birlashtiramiz - aks holda faqat ovozsiz video
@@ -134,8 +130,6 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
         if "entries" in info:
             info = info["entries"][0]
         filename = ydl.prepare_filename(info)
-        if audio_only:
-            filename = os.path.splitext(filename)[0] + ".mp3"
         return filename, info
 
 
@@ -144,9 +138,30 @@ async def search_music(query: str):
     return await loop.run_in_executor(None, _ytdlp_extract, f"scsearch1:{query}", True)
 
 
+async def _fix_faststart(path: str) -> str:
+    """MP4'ning meta-ma'lumotini (moov atom) fayl boshiga ko'chiradi - aks
+    holda ba'zi pleyerlar (shu jumladan Telegram) videoni birinchi kadrdan
+    keyin "muzlatib" qo'yishi mumkin. Faqat oqimni ko'chiradi (qayta encode
+    qilmaydi), shuning uchun juda tez ishlaydi."""
+    fixed_path = f"{os.path.splitext(path)[0]}_fs.mp4"
+    cmd = [FFMPEG_PATH, "-y", "-i", path, "-c", "copy", "-movflags", "+faststart", fixed_path]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        logger.warning("faststart remuxida xatolik, asl fayl ishlatiladi: %s", stderr.decode(errors="ignore")[-300:])
+        return path
+    _cleanup(path)
+    return fixed_path
+
+
 async def download_media(url: str, audio_only: bool):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _ytdlp_extract, url, audio_only)
+    path, info = await loop.run_in_executor(None, _ytdlp_extract, url, audio_only)
+    if not audio_only:
+        path = await _fix_faststart(path)
+    return path, info
 
 
 def _save_image_bytes(image_url: str) -> str:
@@ -184,6 +199,70 @@ async def download_photo(url: str) -> str:
     return await loop.run_in_executor(None, _download_photo_sync, url)
 
 
+TIKTOK_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+
+def _scrape_tiktok_slideshow_sync(url: str) -> dict:
+    """yt-dlp TikTok slayd-shou (rasm+musiqa) postlarini qo'llab-quvvatlamaydi,
+    shuning uchun sahifa ichidagi __UNIVERSAL_DATA_FOR_REHYDRATION__ JSON
+    blokini o'zimiz o'qib olamiz. TikTok sahifa tuzilishini o'zgartirsa, bu
+    funksiya ham yangilanishga muhtoj bo'lib qolishi mumkin."""
+    resp = requests.get(url, timeout=15, headers={"User-Agent": TIKTOK_UA})
+    resp.raise_for_status()
+    match = re.search(
+        r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>',
+        resp.text, re.DOTALL,
+    )
+    if not match:
+        raise RuntimeError("TikTok sahifasidan ma'lumot topilmadi.")
+    data = json.loads(match.group(1))
+    scope = data.get("__DEFAULT_SCOPE__", {})
+    item = None
+    for key in ("webapp.video-detail", "webapp.photo-detail"):
+        detail = (scope.get(key) or {}).get("itemInfo", {}).get("itemStruct")
+        if detail:
+            item = detail
+            break
+    if not item:
+        raise RuntimeError("TikTok postining ma'lumotlari topilmadi.")
+
+    images = []
+    for img in (item.get("imagePost") or {}).get("images") or []:
+        url_list = (img.get("imageURL") or {}).get("urlList") or []
+        if url_list:
+            images.append(url_list[0])
+
+    music = item.get("music") or {}
+    music_url_list = (music.get("playUrl") or {}).get("urlList") or []
+
+    return {
+        "images": images,
+        "music_url": music_url_list[0] if music_url_list else None,
+        "music_title": music.get("title"),
+        "music_author": music.get("authorName"),
+    }
+
+
+async def scrape_tiktok_slideshow(url: str) -> dict:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _scrape_tiktok_slideshow_sync, url)
+
+
+def _download_urls_sync(urls: list, ext: str) -> list:
+    paths = []
+    for u in urls:
+        resp = requests.get(u, timeout=20, headers={"User-Agent": TIKTOK_UA})
+        resp.raise_for_status()
+        path = os.path.join(DOWNLOAD_DIR, f"{uuid.uuid4().hex}.{ext}")
+        with open(path, "wb") as f:
+            f.write(resp.content)
+        paths.append(path)
+    return paths
+
+
 def _friendly_download_error(e: Exception) -> str:
     text = str(e)
     lower = text.lower()
@@ -202,7 +281,7 @@ async def convert_to_round(src_path: str, out_path: str):
         FFMPEG_PATH, "-y", "-i", src_path,
         "-t", "60",
         "-vf", "crop='min(iw,ih)':'min(iw,ih)',scale=480:480",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-threads", "0",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-threads", "0",
         "-c:a", "aac", "-b:a", "128k",
         out_path,
     ]
@@ -321,8 +400,6 @@ async def handle_link(message: Message, url: str):
             "Bu havola qo'llab-quvvatlanmaydi. Instagram, TikTok yoki Pinterest "
             "havolasini yuboring."
         )
-    if platform == "TikTok":
-        url = _normalize_tiktok_url(url)
     token = uuid.uuid4().hex[:12]
     pending_links[token] = url
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -346,6 +423,9 @@ async def on_download_choice(callback: CallbackQuery):
     except Exception:
         pass
 
+    if TIKTOK_PHOTO_RE.search(url):
+        return await _handle_tiktok_slideshow(callback, url, media_type)
+
     status = await callback.message.reply("⏳ Yuklab olinmoqda...")
     path = None
     try:
@@ -366,6 +446,42 @@ async def on_download_choice(callback: CallbackQuery):
         await status.edit_text(f"❌ Yuklab bo'lmadi: {_friendly_download_error(e)}")
     finally:
         _cleanup(path)
+
+
+async def _handle_tiktok_slideshow(callback: CallbackQuery, url: str, media_type: str):
+    status = await callback.message.reply("⏳ Yuklab olinmoqda...")
+    loop = asyncio.get_running_loop()
+    paths = []
+    try:
+        data = await scrape_tiktok_slideshow(url)
+        if media_type == "video":
+            await status.edit_text(
+                "Bu post video emas, rasm+musiqa slayd-shou. \"🖼 Rasm\" yoki "
+                "\"🎵 Musiqa\" tugmasidan foydalaning."
+            )
+            return
+        if media_type == "photo":
+            if not data["images"]:
+                return await status.edit_text("❌ Rasmlar topilmadi.")
+            paths = await loop.run_in_executor(None, _download_urls_sync, data["images"][:10], "jpg")
+            if len(paths) == 1:
+                await callback.message.answer_photo(FSInputFile(paths[0]))
+            else:
+                media = [InputMediaPhoto(media=FSInputFile(p)) for p in paths]
+                await callback.message.answer_media_group(media)
+        else:
+            if not data["music_url"]:
+                return await status.edit_text("❌ Musiqa topilmadi.")
+            paths = await loop.run_in_executor(None, _download_urls_sync, [data["music_url"]], "mp3")
+            await callback.message.answer_audio(
+                FSInputFile(paths[0]), title=data.get("music_title"), performer=data.get("music_author")
+            )
+        await status.delete()
+    except Exception as e:
+        logger.exception("TikTok slayd-shouni yuklashda xatolik")
+        await status.edit_text(f"❌ Yuklab bo'lmadi: {e}")
+    finally:
+        _cleanup(*paths)
 
 
 @dp.message(F.text)
