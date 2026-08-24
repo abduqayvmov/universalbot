@@ -159,6 +159,18 @@ async def download_photo(url: str) -> str:
     return await loop.run_in_executor(None, _download_photo_sync, url)
 
 
+def _friendly_download_error(e: Exception) -> str:
+    text = str(e)
+    if "Sign in to confirm" in text or "cookies" in text.lower():
+        return (
+            "YouTube hozir botlarni cheklamoqda va cookies talab qilmoqda. "
+            "Administrator COOKIES_FILE sozlashi kerak."
+        )
+    if "login required" in text.lower() or "rate-limit" in text.lower():
+        return "Bu havola login talab qiladi (platforma cheklovi). Boshqa havola bilan urinib ko'ring."
+    return text
+
+
 async def convert_to_round(src_path: str, out_path: str):
     cmd = [
         FFMPEG_PATH, "-y", "-i", src_path,
@@ -323,7 +335,7 @@ async def on_download_choice(callback: CallbackQuery):
         await status.delete()
     except Exception as e:
         logger.exception("Yuklab olishda xatolik")
-        await status.edit_text(f"❌ Yuklab bo'lmadi: {e}")
+        await status.edit_text(f"❌ Yuklab bo'lmadi: {_friendly_download_error(e)}")
     finally:
         _cleanup(path)
 
@@ -351,7 +363,7 @@ async def handle_text(message: Message):
         await status.delete()
     except Exception as e:
         logger.exception("Musiqa qidirishda xatolik")
-        await status.edit_text(f"❌ Topilmadi: {e}")
+        await status.edit_text(f"❌ Topilmadi: {_friendly_download_error(e)}")
     finally:
         _cleanup(path)
 
