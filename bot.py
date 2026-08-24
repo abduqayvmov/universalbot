@@ -108,14 +108,17 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
     opts["outtmpl"] = os.path.join(DOWNLOAD_DIR, "%(id)s_%(epoch)s.%(ext)s")
     opts["max_filesize"] = MAX_UPLOAD_BYTES
     if audio_only:
-        opts["format"] = "bestaudio/best"
+        # "*" - filesize/bitrate kabi ba'zi metama'lumotlari to'liq bo'lmagan
+        # formatlarni ham qabul qiladi, aks holda yt-dlp ularni "mos emas" deb
+        # rad etib "Requested format is not available" xatosini beradi.
+        opts["format"] = "bestaudio*/best*"
         opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }]
     else:
-        opts["format"] = "best[ext=mp4]/best"
+        opts["format"] = "best*[ext=mp4]/best*"
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(query_or_url, download=True)
