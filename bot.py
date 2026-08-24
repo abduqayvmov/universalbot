@@ -37,7 +37,16 @@ DOWNLOAD_DIR = "/tmp/musicbot_downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 MAX_UPLOAD_BYTES = 45 * 1024 * 1024  # Telegram bot API ~50MB limitidan biroz pastroq
+
+# Render'da alohida "Secret File" o'rniga cookies.txt matnini to'g'ridan-to'g'ri
+# COOKIES_CONTENT muhit o'zgaruvchisi orqali berish mumkin - shu holda uni
+# ishga tushishda vaqtinchalik faylga yozib, COOKIES_FILE sifatida ishlatamiz.
 COOKIES_FILE = os.getenv("COOKIES_FILE", "")
+COOKIES_CONTENT = os.getenv("COOKIES_CONTENT", "")
+if COOKIES_CONTENT and not COOKIES_FILE:
+    COOKIES_FILE = os.path.join(DOWNLOAD_DIR, "cookies.txt")
+    with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+        f.write(COOKIES_CONTENT)
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())

@@ -26,9 +26,14 @@ Muhit o'zgaruvchilari:
 
 - `BOT_TOKEN` - @BotFather'dan olingan bot tokeni (majburiy).
 - `PORT` - Render kabi platformalarda health-check uchun ochiladigan port (ixtiyoriy, standart 8080).
-- `COOKIES_FILE` - yt-dlp uchun cookies.txt fayl yo'li (ixtiyoriy). Instagram ko'pincha login
-  talab qiladi, YouTube esa datacenter IP'lardan "Sign in to confirm you're not a bot" xatosini
-  berishi mumkin - bunday hollarda brauzerdan eksport qilingan cookies.txt yordam beradi.
+- `COOKIES_FILE` - yt-dlp uchun cookies.txt fayl yo'li (ixtiyoriy, masalan Render'ning "Secret
+  File" xususiyati orqali qo'shilgan bo'lsa). Instagram ko'pincha login talab qiladi, YouTube esa
+  datacenter IP'lardan "Sign in to confirm you're not a bot" xatosini berishi mumkin - bunday
+  hollarda brauzerdan eksport qilingan cookies.txt yordam beradi.
+- `COOKIES_CONTENT` - yuqoridagi bilan bir xil, lekin fayl yo'li o'rniga cookies.txt'ning butun
+  matnini to'g'ridan-to'g'ri muhit o'zgaruvchisiga qo'yish uchun (Secret File kerak bo'lmaydi -
+  bot ishga tushganda buni vaqtinchalik faylga yozib oladi). `COOKIES_FILE` berilgan bo'lsa, bu
+  e'tiborga olinmaydi.
 
 ## Ma'lum cheklovlar
 
