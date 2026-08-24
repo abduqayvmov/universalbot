@@ -26,6 +26,16 @@ Muhit o'zgaruvchilari:
 
 - `BOT_TOKEN` - @BotFather'dan olingan bot tokeni (majburiy).
 - `PORT` - Render kabi platformalarda health-check uchun ochiladigan port (ixtiyoriy, standart 8080).
+- `COOKIES_FILE` - yt-dlp uchun cookies.txt fayl yo'li (ixtiyoriy). Instagram ko'pincha login
+  talab qiladi, YouTube esa datacenter IP'lardan "Sign in to confirm you're not a bot" xatosini
+  berishi mumkin - bunday hollarda brauzerdan eksport qilingan cookies.txt yordam beradi.
+
+## Ma'lum cheklovlar
+
+Instagram va YouTube vaqti-vaqti bilan datacenter IP'lardan (Render kabi) kelgan so'rovlarni
+bloklaydi yoki login talab qiladi. YouTube uchun kod avtomatik `android` klient orqali chetlab
+o'tishga harakat qiladi, lekin bu har doim ishlayvermaydi. Instagram uchun odatda `COOKIES_FILE`
+zarur bo'ladi. TikTok va Pinterest odatda muammosiz ishlaydi.
 
 ## Guruhda ishlashi uchun
 

@@ -37,6 +37,7 @@ DOWNLOAD_DIR = "/tmp/musicbot_downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 MAX_UPLOAD_BYTES = 45 * 1024 * 1024  # Telegram bot API ~50MB limitidan biroz pastroq
+COOKIES_FILE = os.getenv("COOKIES_FILE", "")
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
@@ -74,15 +75,25 @@ def detect_platform(url: str) -> str | None:
     return None
 
 
-def _ytdlp_extract(query_or_url: str, audio_only: bool):
+def _base_ydl_opts() -> dict:
     opts = {
-        "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s_%(epoch)s.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "ffmpeg_location": FFMPEG_PATH,
-        "max_filesize": MAX_UPLOAD_BYTES,
+        # YouTube "Sign in to confirm you're not a bot" tekshiruvini chetlab
+        # o'tish uchun - datacenter IP'lardan web klient ko'pincha shu xatoni beradi.
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
+
+
+def _ytdlp_extract(query_or_url: str, audio_only: bool):
+    opts = _base_ydl_opts()
+    opts["outtmpl"] = os.path.join(DOWNLOAD_DIR, "%(id)s_%(epoch)s.%(ext)s")
+    opts["max_filesize"] = MAX_UPLOAD_BYTES
     if audio_only:
         opts["format"] = "bestaudio/best"
         opts["postprocessors"] = [{
@@ -124,7 +135,8 @@ def _save_image_bytes(image_url: str) -> str:
 
 def _download_photo_sync(url: str) -> str:
     try:
-        opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+        opts = _base_ydl_opts()
+        opts["skip_download"] = True
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             thumb = info.get("thumbnail")
