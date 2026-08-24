@@ -57,6 +57,15 @@ PLATFORM_PATTERNS = {
     "TikTok": re.compile(r"tiktok\.com"),
     "Pinterest": re.compile(r"pinterest\.[a-z.]+|pin\.it"),
 }
+TIKTOK_PHOTO_RE = re.compile(r"(tiktok\.com/@[\w.\-]+/)photo(/\d+)")
+
+
+def _normalize_tiktok_url(url: str) -> str:
+    """TikTok slayd-shou (rasm) postlari /photo/ yo'lida bo'ladi, lekin yt-dlp
+    buni "Unsupported URL" deb rad etadi - faqat /video/ ni tanийdi. TikTok'ning
+    o'zi post ID orqali ishlaydi, yo'l segmentiga unchalik e'tibor bermaydi,
+    shuning uchun /video/ ga almashtirib yuboramiz."""
+    return TIKTOK_PHOTO_RE.sub(r"\1video\2", url)
 
 pending_links: dict[str, str] = {}
 pending_audio: dict[int, str] = {}
@@ -99,6 +108,9 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
     opts = _base_ydl_opts()
     opts["outtmpl"] = os.path.join(DOWNLOAD_DIR, "%(id)s_%(epoch)s.%(ext)s")
     opts["max_filesize"] = MAX_UPLOAD_BYTES
+    # Parchalab (HLS/DASH) beriladigan fayllarni bir nechta ulanish bilan
+    # parallel yuklab tezlashtiradi.
+    opts["concurrent_fragment_downloads"] = 4
     if audio_only:
         # "*" - filesize/bitrate kabi ba'zi metama'lumotlari to'liq bo'lmagan
         # formatlarni ham qabul qiladi, aks holda yt-dlp ularni "mos emas" deb
@@ -107,10 +119,15 @@ def _ytdlp_extract(query_or_url: str, audio_only: bool):
         opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
-            "preferredquality": "192",
+            # 128 kbps - Telegram'da eshitish uchun yetarli va tezroq kodlanadi.
+            "preferredquality": "128",
         }]
     else:
-        opts["format"] = "best*[ext=mp4]/best*"
+        # Video va audio alohida oqim sifatida berilgan hollarda (masalan
+        # Pinterest) ularni birlashtiramiz - aks holda faqat ovozsiz video
+        # yuklanib qolishi mumkin edi.
+        opts["format"] = "bestvideo*+bestaudio/best*"
+        opts["merge_output_format"] = "mp4"
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(query_or_url, download=True)
@@ -184,8 +201,8 @@ async def convert_to_round(src_path: str, out_path: str):
     cmd = [
         FFMPEG_PATH, "-y", "-i", src_path,
         "-t", "60",
-        "-vf", "crop='min(iw,ih)':'min(iw,ih)',scale=384:384",
-        "-c:v", "libx264", "-preset", "veryfast",
+        "-vf", "crop='min(iw,ih)':'min(iw,ih)',scale=480:480",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-threads", "0",
         "-c:a", "aac", "-b:a", "128k",
         out_path,
     ]
@@ -304,6 +321,8 @@ async def handle_link(message: Message, url: str):
             "Bu havola qo'llab-quvvatlanmaydi. Instagram, TikTok yoki Pinterest "
             "havolasini yuboring."
         )
+    if platform == "TikTok":
+        url = _normalize_tiktok_url(url)
     token = uuid.uuid4().hex[:12]
     pending_links[token] = url
     kb = InlineKeyboardMarkup(inline_keyboard=[[
